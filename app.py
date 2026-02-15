@@ -23,51 +23,42 @@ mode = st.sidebar.radio(
 # -------------------------------------
 # BOX DETECTION (Simple Contour-Based)
 # -------------------------------------
-def detect_box(image_bgr):
-    gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
-    blur = cv2.GaussianBlur(gray, (5, 5), 0)
-    edged = cv2.Canny(blur, 50, 150)
-
-    contours, _ = cv2.findContours(
-        edged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-    )
-
-    for cnt in contours:
-        approx = cv2.approxPolyDP(
-            cnt, 0.02 * cv2.arcLength(cnt, True), True
-        )
-
-        if len(approx) == 4 and cv2.contourArea(cnt) > 2000:
-            cv2.drawContours(image_bgr, [approx], -1, (0, 255, 0), 3)
-            cv2.putText(
-                image_bgr,
-                "BOX",
-                (approx[0][0][0], approx[0][0][1] - 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
-                (0, 255, 0),
-                2,
-            )
-
-    return image_bgr
-
+if "fragile" in extracted_text.lower():
+    decision = "Fragile marking detected. Do not stack. Handle with care."
+else:
+    decision = "No specific warehouse risk keywords detected."
 
 # -------------------------------------
 # OCR WITH PROPER PREPROCESSING
 # -------------------------------------
-def extract_text(image_bgr):
-    gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
-    thresh = cv2.threshold(
-        gray, 150, 255, cv2.THRESH_BINARY
-    )[1]
+# -------- OCR IMPROVED --------
+gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
 
-    text = pytesseract.image_to_string(
-        thresh,
-        config="--psm 6"
-    )
+# Increase contrast
+gray = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    return text.strip()
+# Adaptive threshold
+thresh = cv2.adaptiveThreshold(
+    gray,
+    255,
+    cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+    cv2.THRESH_BINARY,
+    11,
+    2
+)
 
+# Optional: resize for better OCR accuracy
+scale_percent = 200
+width = int(thresh.shape[1] * scale_percent / 100)
+height = int(thresh.shape[0] * scale_percent / 100)
+thresh = cv2.resize(thresh, (width, height))
+
+extracted_text = pytesseract.image_to_string(
+    thresh,
+    config="--psm 6"
+)
+
+extracted_text = extracted_text.strip()
 
 # -------------------------------------
 # RULE ENGINE
