@@ -3,9 +3,14 @@ import cv2
 import numpy as np
 from PIL import Image
 import pytesseract
-import tempfile
 
-st.set_page_config(page_title="Warehouse Intelligence System", layout="wide")
+# -------------------------------------
+# PAGE CONFIG
+# -------------------------------------
+st.set_page_config(
+    page_title="Warehouse Intelligence System",
+    layout="wide"
+)
 
 st.title("Warehouse Intelligence System")
 st.write("Box Detection · OCR Analysis · Video Monitoring")
@@ -15,129 +20,146 @@ mode = st.sidebar.radio(
     ["Image Inspection", "Video Monitoring"]
 )
 
-# -----------------------------------------------------
-# RULE ENGINE
-# -----------------------------------------------------
-def generate_response(has_box, extracted_text, query):
+# -------------------------------------
+# BOX DETECTION (Simple Contour-Based)
+# -------------------------------------
+def detect_box(image_bgr):
+    gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(gray, (5, 5), 0)
+    edged = cv2.Canny(blur, 50, 150)
 
-    text = extracted_text.lower()
+    contours, _ = cv2.findContours(
+        edged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+
+    for cnt in contours:
+        approx = cv2.approxPolyDP(
+            cnt, 0.02 * cv2.arcLength(cnt, True), True
+        )
+
+        if len(approx) == 4 and cv2.contourArea(cnt) > 2000:
+            cv2.drawContours(image_bgr, [approx], -1, (0, 255, 0), 3)
+            cv2.putText(
+                image_bgr,
+                "BOX",
+                (approx[0][0][0], approx[0][0][1] - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.8,
+                (0, 255, 0),
+                2,
+            )
+
+    return image_bgr
+
+
+# -------------------------------------
+# OCR WITH PROPER PREPROCESSING
+# -------------------------------------
+def extract_text(image_bgr):
+    gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+    thresh = cv2.threshold(
+        gray, 150, 255, cv2.THRESH_BINARY
+    )[1]
+
+    text = pytesseract.image_to_string(
+        thresh,
+        config="--psm 6"
+    )
+
+    return text.strip()
+
+
+# -------------------------------------
+# RULE ENGINE
+# -------------------------------------
+def rule_engine(text, query):
+    text = text.lower()
     query = query.lower()
 
     if "fragile" in text:
-        return "Fragile marking detected. Do not stack. Use shock-absorbing material."
+        return "Fragile marking detected. Do not stack. Handle with care."
 
-    if "handle with care" in text:
-        return "Handle With Care detected. Manual supervision required."
+    if "flammable" in text:
+        return "Flammable material detected. Store in ventilated zone."
 
-    if has_box and "stack" in query:
-        return "Box detected. Check stacking limits."
+    if query:
+        return "No specific warehouse risk keywords detected."
 
-    if has_box:
-        return "Standard box detected."
-
-    return "No operational risk detected."
+    return "No specific warehouse risk keywords detected."
 
 
-# -----------------------------------------------------
-# BOX DETECTION FUNCTION
-# -----------------------------------------------------
-def detect_boxes(frame):
-
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    blur = cv2.GaussianBlur(gray, (5,5), 0)
-    edges = cv2.Canny(blur, 50, 150)
-
-    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    has_box = False
-
-    for cnt in contours:
-        area = cv2.contourArea(cnt)
-        if area > 5000:
-            x,y,w,h = cv2.boundingRect(cnt)
-            aspect_ratio = w / float(h)
-
-            if 0.6 < aspect_ratio < 1.8:
-                has_box = True
-                cv2.rectangle(frame, (x,y), (x+w,y+h), (0,255,0), 2)
-                cv2.putText(frame, "BOX", (x,y-10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
-
-    return frame, has_box
-
-
-# -----------------------------------------------------
+# =====================================
 # IMAGE MODE
-# -----------------------------------------------------
+# =====================================
 if mode == "Image Inspection":
 
-    uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
+    uploaded_file = st.file_uploader(
+        "Upload warehouse package image",
+        type=["jpg", "jpeg", "png"]
+    )
 
     if uploaded_file:
-
         image = Image.open(uploaded_file).convert("RGB")
         image_np = np.array(image)
         image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
 
-        processed_frame, has_box = detect_boxes(image_bgr)
+        processed = detect_box(image_bgr.copy())
+        extracted_text = extract_text(processed)
 
-        extracted_text = pytesseract.image_to_string(processed_frame)
-
-        col1, col2 = st.columns([2,1])
+        col1, col2 = st.columns([2, 1])
 
         with col1:
-            st.image(cv2.cvtColor(processed_frame, cv2.COLOR_BGR2RGB))
+            st.image(
+                cv2.cvtColor(processed, cv2.COLOR_BGR2RGB)
+            )
 
         with col2:
             st.subheader("OCR Text")
-            st.write(extracted_text if extracted_text else "No text detected")
+            if extracted_text:
+                st.write(extracted_text)
+            else:
+                st.write("No text detected")
 
             query = st.text_input("Operational Query")
 
-            if query:
-                response = generate_response(has_box, extracted_text, query)
+            if query or extracted_text:
+                response = rule_engine(extracted_text, query)
                 st.success(response)
 
 
-# -----------------------------------------------------
-# VIDEO MODE
-# -----------------------------------------------------
+# =====================================
+# VIDEO MODE (UPLOAD VIDEO — HF SAFE)
+# =====================================
 elif mode == "Video Monitoring":
 
-    video_file = st.file_uploader("Upload Video", type=["mp4"])
+    uploaded_video = st.file_uploader(
+        "Upload warehouse video",
+        type=["mp4", "mov", "avi"]
+    )
 
-    if video_file:
+    if uploaded_video:
+        tfile = open("temp_video.mp4", "wb")
+        tfile.write(uploaded_video.read())
 
-        temp_file = tempfile.NamedTemporaryFile(delete=False)
-        temp_file.write(video_file.read())
-
-        cap = cv2.VideoCapture(temp_file.name)
-
-        start = st.button("Start Processing")
-        stop = st.button("Stop")
-
+        cap = cv2.VideoCapture("temp_video.mp4")
         frame_placeholder = st.empty()
+
         query_video = st.text_input("Operational Query")
 
-        if start:
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
 
-            while cap.isOpened():
+            processed = detect_box(frame.copy())
+            extracted_text = extract_text(processed)
 
-                ret, frame = cap.read()
-                if not ret:
-                    break
+            frame_placeholder.image(
+                cv2.cvtColor(processed, cv2.COLOR_BGR2RGB)
+            )
 
-                processed_frame, has_box = detect_boxes(frame)
+            if extracted_text:
+                response = rule_engine(extracted_text, query_video)
+                st.success(response)
 
-                extracted_text = pytesseract.image_to_string(processed_frame)
-
-                frame_placeholder.image(processed_frame, channels="BGR")
-
-                if query_video:
-                    response = generate_response(has_box, extracted_text, query_video)
-                    st.info(response)
-
-                if stop:
-                    break
-
-            cap.release()
+        cap.release()
