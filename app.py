@@ -42,20 +42,23 @@ def generate_response(text):
 # ------------------------------------------------
 # OCR FUNCTION
 # ------------------------------------------------
-
 def extract_text(image_array):
+    # Convert to grayscale
     gray = cv2.cvtColor(image_array, cv2.COLOR_BGR2GRAY)
-    gray = cv2.GaussianBlur(gray, (3, 3), 0)
-    thresh = cv2.adaptiveThreshold(
-        gray,
-        255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY,
-        11,
-        2
-    )
-    text = pytesseract.image_to_string(thresh)
-    return text.strip()
+
+    # Resize image (VERY IMPORTANT for small images)
+    gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+
+    # Apply threshold
+    _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
+
+    # Tesseract config (force uppercase detection)
+    custom_config = r'--oem 3 --psm 6'
+
+    text = pytesseract.image_to_string(thresh, config=custom_config)
+
+    return text.strip() 
+ 
 
 
 # ------------------------------------------------
