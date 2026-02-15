@@ -6,9 +6,9 @@ from PIL import Image
 import cv2
 import numpy as np
 
-# ------------------------------------------------
+# -------------------------------------
 # PAGE CONFIG
-# ------------------------------------------------
+# -------------------------------------
 st.set_page_config(
     page_title="Warehouse Intelligence System",
     layout="wide"
@@ -22,9 +22,9 @@ mode = st.sidebar.radio(
     ["Image Inspection", "Live Camera"]
 )
 
-# ------------------------------------------------
+# -------------------------------------
 # LOAD MODEL (Pretrained ResNet18)
-# ------------------------------------------------
+# -------------------------------------
 @st.cache_resource
 def load_model():
     model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
@@ -33,49 +33,44 @@ def load_model():
 
 model = load_model()
 
-# ------------------------------------------------
-# LOAD IMAGENET LABELS SAFELY
-# ------------------------------------------------
-from torchvision.models import ResNet18_Weights
-weights = ResNet18_Weights.DEFAULT
-categories = weights.meta["categories"]
+# -------------------------------------
+# LOAD IMAGENET LABELS (FROM TORCH)
+# -------------------------------------
+categories = models.ResNet18_Weights.DEFAULT.meta["categories"]
 
-# ------------------------------------------------
+# -------------------------------------
 # TRANSFORM
-# ------------------------------------------------
+# -------------------------------------
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
 ])
 
-# ------------------------------------------------
+# -------------------------------------
 # HANDLING ENGINE
-# ------------------------------------------------
+# -------------------------------------
 def generate_response(label, query):
     label = label.lower()
     query = query.lower()
 
-    if "bottle" in label or "wine" in label or "glass" in label:
+    if "bottle" in label or "glass" in label:
         return "Fragile object detected. Avoid stacking and use protective packaging."
 
     if "person" in label:
         return "Human detected in operational zone. Ensure safety compliance."
 
     if query:
-        return f"No warehouse rule triggered for detected object: {label}"
+        return f"No specific warehouse rule triggered for detected object: {label}"
 
     return "No risk indicators detected."
 
 
-# =================================================
+# =====================================
 # IMAGE MODE
-# =================================================
+# =====================================
 if mode == "Image Inspection":
 
-    uploaded_file = st.file_uploader(
-        "Upload warehouse image",
-        type=["jpg", "jpeg", "png"]
-    )
+    uploaded_file = st.file_uploader("Upload warehouse image", type=["jpg", "jpeg", "png"])
 
     if uploaded_file:
 
@@ -93,7 +88,7 @@ if mode == "Image Inspection":
         col1, col2 = st.columns([2, 1])
 
         with col1:
-            st.image(image, use_container_width=True)
+            st.image(image)
 
         with col2:
             st.subheader("Prediction")
@@ -107,14 +102,14 @@ if mode == "Image Inspection":
                 st.info(response)
 
 
-# =================================================
+# =====================================
 # LIVE CAMERA MODE
-# =================================================
+# =====================================
 elif mode == "Live Camera":
 
-    st.write("Live camera works locally. HuggingFace Spaces do not support webcam access.")
+    st.warning("⚠️ Live camera may not work on HuggingFace Spaces (browser sandbox limitation).")
 
-    run = st.checkbox("Start Live Camera (Local Only)")
+    run = st.checkbox("Start Live Camera")
 
     frame_placeholder = st.empty()
     query_live = st.text_input("Operational Query (optional)")
@@ -122,7 +117,7 @@ elif mode == "Live Camera":
     if run:
         cap = cv2.VideoCapture(0)
 
-        while cap.isOpened():
+        while True:
             ret, frame = cap.read()
             if not ret:
                 break
@@ -149,11 +144,7 @@ elif mode == "Live Camera":
                 2
             )
 
-            frame_placeholder.image(
-                frame,
-                channels="BGR",
-                use_container_width=True
-            )
+            frame_placeholder.image(frame, channels="BGR")
 
             if query_live:
                 response = generate_response(predicted_label, query_live)
