@@ -112,6 +112,7 @@ if module == "Image Inspection":
 # =================================================
 # VIDEO MODULE
 # =================================================
+
 elif module == "Video Monitoring":
 
     uploaded_video = st.file_uploader(
@@ -129,33 +130,22 @@ elif module == "Video Monitoring":
         stframe = st.empty()
 
         collected_text = ""
-        frame_count = 0
 
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 break
 
-            frame_count += 1
-
-            # Only process every 15th frame (important)
-            if frame_count % 15 != 0:
-                continue
-
-            # Show frame
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             stframe.image(rgb)
 
-            # Strong preprocessing (same as image)
             text = extract_text(frame)
-
             if text:
                 collected_text += " " + text
 
         cap.release()
 
         st.subheader("Detected Text (Video)")
-
         if collected_text.strip():
             st.code(collected_text.strip())
         else:
