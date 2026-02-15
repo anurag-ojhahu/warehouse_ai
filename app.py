@@ -1,12 +1,10 @@
 import streamlit as st
-import easyocr
+import pytesseract
 from PIL import Image
 import cv2
 import numpy as np
+import tempfile
 
-# ---------------------------------------------------
-# PAGE CONFIG
-# ---------------------------------------------------
 st.set_page_config(
     page_title="Warehouse Intelligence System",
     layout="wide"
@@ -15,23 +13,10 @@ st.set_page_config(
 st.title("Warehouse Intelligence System")
 st.write("Box Detection · OCR Analysis · Video Monitoring")
 
-mode = st.sidebar.radio(
-    "Select Module",
-    ["Image Inspection", "Video Monitoring"]
-)
+# -----------------------------------------
+# RULE ENGINE
+# -----------------------------------------
 
-# ---------------------------------------------------
-# LOAD OCR MODEL (Deep Learning Based)
-# ---------------------------------------------------
-@st.cache_resource
-def load_reader():
-    return easyocr.Reader(['en'], gpu=False)
-
-reader = load_reader()
-
-# ---------------------------------------------------
-# RISK RULE ENGINE
-# ---------------------------------------------------
 def generate_response(text):
     text = text.lower()
 
@@ -39,7 +24,7 @@ def generate_response(text):
         return "⚠️ FRAGILE detected. Use protective packaging and avoid stacking."
 
     if "handle with care" in text:
-        return "⚠️ Handle With Care detected. Assign trained personnel."
+        return "⚠️ Handle With Care detected. Assign trained handling personnel."
 
     if "glass" in text:
         return "⚠️ Glass material detected. High break risk."
@@ -47,75 +32,48 @@ def generate_response(text):
     if "flammable" in text:
         return "🔥 Flammable material detected. Store away from heat sources."
 
-    if text.strip() == "":
-        return "No readable text detected."
-
     return "No specific warehouse risk keywords detected."
 
 
-# ---------------------------------------------------
-# OCR + BOX DRAWING FUNCTION
-# ---------------------------------------------------
-def process_frame(frame):
-    results = reader.readtext(frame)
+# -----------------------------------------
+# MODULE SELECTION
+# -----------------------------------------
 
-    extracted_text = ""
+module = st.radio("Select Module", ["Image Inspection", "Video Monitoring"])
 
-    for (bbox, text, confidence) in results:
-        extracted_text += text + " "
+# =========================================
+# IMAGE MODULE
+# =========================================
 
-        # Draw bounding box
-        pts = np.array(bbox).astype(int)
-        cv2.polylines(frame, [pts], True, (0, 255, 0), 2)
+if module == "Image Inspection":
 
-        # Put detected text
-        cv2.putText(
-            frame,
-            text,
-            (pts[0][0], pts[0][1] - 10),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            (0, 255, 0),
-            2
-        )
-
-    return frame, extracted_text.strip()
-
-
-# ===================================================
-# IMAGE MODE
-# ===================================================
-if mode == "Image Inspection":
-
-    uploaded_file = st.file_uploader(
+    uploaded_image = st.file_uploader(
         "Upload warehouse package image",
         type=["jpg", "jpeg", "png"]
     )
 
-    if uploaded_file:
+    if uploaded_image:
 
-        image = Image.open(uploaded_file).convert("RGB")
+        image = Image.open(uploaded_image).convert("RGB")
+        st.image(image, width="stretch")
+
         img_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
 
-        processed_frame, extracted_text = process_frame(img_cv)
+        extracted_text = pytesseract.image_to_string(img_cv)
 
-        col1, col2 = st.columns([2, 1])
+        st.subheader("OCR Text")
+        st.code(extracted_text)
 
-        with col1:
-            st.image(processed_frame, channels="BGR")
-
-        with col2:
-            st.subheader("OCR Text")
-            st.code(extracted_text if extracted_text else "No text detected")
-
-            st.subheader("Operational Intelligence")
-            st.success(generate_response(extracted_text))
+        st.subheader("Operational Intelligence")
+        result = generate_response(extracted_text)
+        st.success(result)
 
 
-# ===================================================
-# VIDEO MODE
-# ===================================================
-elif mode == "Video Monitoring":
+# =========================================
+# VIDEO MODULE
+# =========================================
+
+if module == "Video Monitoring":
 
     uploaded_video = st.file_uploader(
         "Upload warehouse video",
@@ -124,24 +82,35 @@ elif mode == "Video Monitoring":
 
     if uploaded_video:
 
-        tfile = open("temp_video.mp4", "wb")
+        tfile = tempfile.NamedTemporaryFile(delete=False)
         tfile.write(uploaded_video.read())
 
-        cap = cv2.VideoCapture("temp_video.mp4")
+        cap = cv2.VideoCapture(tfile.name)
 
-        frame_placeholder = st.empty()
-        text_placeholder = st.empty()
-        risk_placeholder = st.empty()
+        stframe = st.empty()
+
+        detected_text = ""
 
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 break
 
-            processed_frame, extracted_text = process_frame(frame)
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            pil_frame = Image.fromarray(rgb)
 
-            frame_placeholder.image(processed_frame, channels="BGR")
-            text_placeholder.code(extracted_text if extracted_text else "No text detected")
-            risk_placeholder.success(generate_response(extracted_text))
+            stframe.image(pil_frame, width="stretch")
+
+            text = pytesseract.image_to_string(frame)
+
+            if text.strip() != "":
+                detected_text += text
 
         cap.release()
+
+        st.subheader("Detected Text (Video)")
+        st.code(detected_text)
+
+        st.subheader("Operational Intelligence")
+        result = generate_response(detected_text)
+        st.success(result)
