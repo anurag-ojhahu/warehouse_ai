@@ -5,10 +5,6 @@ import cv2
 import numpy as np
 import tempfile
 
-# ------------------------------------------------
-# PAGE CONFIG
-# ------------------------------------------------
-
 st.set_page_config(
     page_title="Warehouse Intelligence System",
     layout="wide"
@@ -17,11 +13,12 @@ st.set_page_config(
 st.title("Warehouse Intelligence System")
 st.write("Box Detection · OCR Analysis · Video Monitoring")
 
+
 # ------------------------------------------------
 # RULE ENGINE
 # ------------------------------------------------
 
-def generate_response(text: str):
+def generate_response(text):
     if not text:
         return "No specific warehouse risk keywords detected."
 
@@ -46,7 +43,7 @@ def generate_response(text: str):
 # OCR FUNCTION
 # ------------------------------------------------
 
-def extract_text_from_image(image_array):
+def extract_text(image_array):
     gray = cv2.cvtColor(image_array, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (3, 3), 0)
     thresh = cv2.adaptiveThreshold(
@@ -55,7 +52,7 @@ def extract_text_from_image(image_array):
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv2.THRESH_BINARY,
         11,
-        2,
+        2
     )
     text = pytesseract.image_to_string(thresh)
     return text.strip()
@@ -69,7 +66,7 @@ module = st.radio("Select Module", ["Image Inspection", "Video Monitoring"])
 
 
 # =================================================
-# IMAGE INSPECTION
+# IMAGE MODULE
 # =================================================
 
 if module == "Image Inspection":
@@ -82,11 +79,10 @@ if module == "Image Inspection":
     if uploaded_image is not None:
 
         image = Image.open(uploaded_image).convert("RGB")
-        st.image(image, width="stretch")
+        st.image(image)  # ← SAFE
 
         image_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-
-        extracted_text = extract_text_from_image(image_cv)
+        extracted_text = extract_text(image_cv)
 
         st.subheader("OCR Text")
         if extracted_text:
@@ -100,7 +96,7 @@ if module == "Image Inspection":
 
 
 # =================================================
-# VIDEO MONITORING
+# VIDEO MODULE
 # =================================================
 
 elif module == "Video Monitoring":
@@ -117,7 +113,7 @@ elif module == "Video Monitoring":
         temp_file.close()
 
         cap = cv2.VideoCapture(temp_file.name)
-        frame_display = st.empty()
+        stframe = st.empty()
 
         collected_text = ""
 
@@ -126,10 +122,10 @@ elif module == "Video Monitoring":
             if not ret:
                 break
 
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frame_display.image(rgb_frame, width="stretch")
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            stframe.image(rgb)
 
-            text = extract_text_from_image(frame)
+            text = extract_text(frame)
             if text:
                 collected_text += " " + text
 
