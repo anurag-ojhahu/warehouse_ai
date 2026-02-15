@@ -1,130 +1,141 @@
 import streamlit as st
-import torch
-import torchvision.transforms as transforms
-from torchvision import models
-from PIL import Image
 import cv2
 import numpy as np
+from PIL import Image
+import pytesseract
+import tempfile
 
-# ----------------------------------------
-# PAGE CONFIG
-# ----------------------------------------
-st.set_page_config(
-    page_title="Warehouse Intelligence System",
-    layout="wide"
-)
+st.set_page_config(page_title="Warehouse Intelligence System", layout="wide")
 
 st.title("Warehouse Intelligence System")
-st.write("Box Detection · Classification · Operational Intelligence")
+st.write("Box Detection · OCR Analysis · Video Monitoring")
 
-# ----------------------------------------
-# LOAD MODEL (Pretrained ResNet18)
-# ----------------------------------------
-@st.cache_resource
-def load_model():
-    model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
-    model.eval()
-    return model
+mode = st.sidebar.radio(
+    "Select Module",
+    ["Image Inspection", "Video Monitoring"]
+)
 
-model = load_model()
+# -----------------------------------------------------
+# RULE ENGINE
+# -----------------------------------------------------
+def generate_response(has_box, extracted_text, query):
 
-# ----------------------------------------
-# LOAD IMAGENET LABELS (AUTO FROM WEIGHTS)
-# ----------------------------------------
-weights = models.ResNet18_Weights.DEFAULT
-categories = weights.meta["categories"]
-
-# ----------------------------------------
-# IMAGE TRANSFORM
-# ----------------------------------------
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-])
-
-# ----------------------------------------
-# SIMPLE RULE ENGINE
-# ----------------------------------------
-def generate_response(label, query):
-    label = label.lower()
+    text = extracted_text.lower()
     query = query.lower()
 
-    if "box" in label or "package" in label:
-        return "Standard warehouse box detected. Ensure proper stacking."
+    if "fragile" in text:
+        return "Fragile marking detected. Use shock-absorbing packaging. Do not stack."
 
-    if "bottle" in label or "glass" in label:
-        return "Fragile object detected. Avoid stacking and use protective padding."
+    if "handle with care" in text:
+        return "Handle With Care detected. Manual handling recommended."
 
-    if "person" in label:
-        return "Human detected in operational zone. Follow safety protocol."
+    if has_box and "stack" in query:
+        return "Box detected. Ensure stacking weight limits are respected."
 
-    if query:
-        return f"No specific warehouse rule triggered for detected object: {label}"
+    if has_box:
+        return "Standard box detected. No special risk indicators."
 
     return "No operational risk detected."
 
-# =========================================
-# IMAGE UPLOAD
-# =========================================
-uploaded_file = st.file_uploader("Upload warehouse image", type=["jpg", "jpeg", "png"])
 
-if uploaded_file:
+# -----------------------------------------------------
+# IMAGE MODE
+# -----------------------------------------------------
+if mode == "Image Inspection":
 
-    image = Image.open(uploaded_file).convert("RGB")
-    image_np = np.array(image)
+    uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
 
-    # ----------------------------------------
-    # OPENCV BOX DETECTION
-    # ----------------------------------------
-    gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
-    edges = cv2.Canny(gray, 100, 200)
+    if uploaded_file:
 
-    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        image = Image.open(uploaded_file).convert("RGB")
+        image_np = np.array(image)
 
-    for cnt in contours:
-        area = cv2.contourArea(cnt)
-        if area > 1000:
-            x, y, w, h = cv2.boundingRect(cnt)
+        # Box detection via contours
+        gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
+        blur = cv2.GaussianBlur(gray, (5,5), 0)
+        edges = cv2.Canny(blur, 50, 150)
 
-            cv2.rectangle(image_np, (x, y), (x+w, y+h), (0, 255, 0), 2)
-            cv2.putText(
-                image_np,
-                f"W:{w}px H:{h}px",
-                (x, y-10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.6,
-                (0,255,0),
-                2
-            )
+        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # ----------------------------------------
-    # CLASSIFICATION
-    # ----------------------------------------
-    img_tensor = transform(image).unsqueeze(0)
+        has_box = False
 
-    with torch.no_grad():
-        outputs = model(img_tensor)
-        probabilities = torch.nn.functional.softmax(outputs[0], dim=0)
-        top_prob, top_catid = torch.topk(probabilities, 1)
+        for cnt in contours:
+            area = cv2.contourArea(cnt)
+            if area > 5000:
+                x,y,w,h = cv2.boundingRect(cnt)
+                aspect_ratio = w / float(h)
 
-    predicted_label = categories[top_catid.item()]
-    confidence = top_prob.item() * 100
+                if 0.5 < aspect_ratio < 2.0:
+                    has_box = True
+                    cv2.rectangle(image_np, (x,y), (x+w,y+h), (0,255,0), 2)
+                    cv2.putText(image_np, "BOX", (x,y-10),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
 
-    # ----------------------------------------
-    # DISPLAY
-    # ----------------------------------------
-    col1, col2 = st.columns([2,1])
+        # OCR
+        extracted_text = pytesseract.image_to_string(image_np)
 
-    with col1:
-        st.image(image_np)
+        col1, col2 = st.columns([2,1])
 
-    with col2:
-        st.subheader("Classification")
-        st.write(f"Label: {predicted_label}")
-        st.write(f"Confidence: {confidence:.2f}%")
+        with col1:
+            st.image(image_np)
 
-        query = st.text_input("Operational Query (optional)")
+        with col2:
+            st.subheader("OCR Text")
+            st.write(extracted_text if extracted_text else "No text detected")
 
-        if query:
-            response = generate_response(predicted_label, query)
-            st.success(response)
+            query = st.text_input("Operational Query")
+
+            if query:
+                response = generate_response(has_box, extracted_text, query)
+                st.success(response)
+
+
+# -----------------------------------------------------
+# VIDEO MODE
+# -----------------------------------------------------
+elif mode == "Video Monitoring":
+
+    video_file = st.file_uploader("Upload Video", type=["mp4"])
+
+    if video_file:
+
+        temp_file = tempfile.NamedTemporaryFile(delete=False)
+        temp_file.write(video_file.read())
+
+        cap = cv2.VideoCapture(temp_file.name)
+        frame_placeholder = st.empty()
+        query_video = st.text_input("Operational Query")
+
+        while cap.isOpened():
+
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            blur = cv2.GaussianBlur(gray, (5,5), 0)
+            edges = cv2.Canny(blur, 50, 150)
+
+            contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+            has_box = False
+
+            for cnt in contours:
+                area = cv2.contourArea(cnt)
+                if area > 5000:
+                    x,y,w,h = cv2.boundingRect(cnt)
+                    aspect_ratio = w / float(h)
+
+                    if 0.5 < aspect_ratio < 2.0:
+                        has_box = True
+                        cv2.rectangle(frame, (x,y), (x+w,y+h), (0,255,0), 2)
+                        cv2.putText(frame, "BOX", (x,y-10),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+
+            frame_placeholder.image(frame, channels="BGR")
+
+            if query_video:
+                response = generate_response(has_box, "", query_video)
+                st.info(response)
+
+        cap.release()
