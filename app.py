@@ -46,20 +46,31 @@ def extract_text(image_array):
     # Convert to grayscale
     gray = cv2.cvtColor(image_array, cv2.COLOR_BGR2GRAY)
 
-    # Resize image (VERY IMPORTANT for small images)
+    # Upscale image (critical for small text)
     gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
 
-    # Apply threshold
-    _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
+    # Increase contrast
+    gray = cv2.equalizeHist(gray)
 
-    # Tesseract config (force uppercase detection)
+    # Apply bilateral filter (keeps edges sharp)
+    gray = cv2.bilateralFilter(gray, 9, 75, 75)
+
+    # Adaptive threshold (better for uneven lighting)
+    thresh = cv2.adaptiveThreshold(
+        gray,
+        255,
+        cv2.ADAPTIVE_THRESH_MEAN_C,
+        cv2.THRESH_BINARY,
+        15,
+        5
+    )
+
+    # OCR config
     custom_config = r'--oem 3 --psm 6'
 
     text = pytesseract.image_to_string(thresh, config=custom_config)
 
-    return text.strip() 
- 
-
+    return text.strip()
 
 # ------------------------------------------------
 # MODULE SELECTOR
