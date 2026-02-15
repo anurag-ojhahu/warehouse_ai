@@ -5,71 +5,71 @@ from torchvision import models
 from PIL import Image
 import cv2
 import numpy as np
-import tempfile
 
-# -------------------------------------
+# ------------------------------------------------
 # PAGE CONFIG
-# -------------------------------------
+# ------------------------------------------------
 st.set_page_config(
     page_title="Warehouse Intelligence System",
     layout="wide"
 )
 
 st.title("Warehouse Intelligence System")
-st.write("Image Classification · Video Monitoring · Operational Intelligence")
+st.write("Image Classification · Live Monitoring · Operational Intelligence")
 
 mode = st.sidebar.radio(
     "Select Module",
-    ["Image Inspection", "Video Monitoring"]
+    ["Image Inspection", "Live Camera"]
 )
 
-# -------------------------------------
+# ------------------------------------------------
 # LOAD MODEL (Pretrained ResNet18)
-# Auto-downloads weights (HF safe)
-# -------------------------------------
+# ------------------------------------------------
 @st.cache_resource
 def load_model():
-    weights = models.ResNet18_Weights.DEFAULT
-    model = models.resnet18(weights=weights)
+    model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
     model.eval()
-    return model, weights
+    return model
 
-model, weights = load_model()
+model = load_model()
+
+# ------------------------------------------------
+# LOAD IMAGENET LABELS SAFELY
+# ------------------------------------------------
+from torchvision.models import ResNet18_Weights
+weights = ResNet18_Weights.DEFAULT
 categories = weights.meta["categories"]
 
-# -------------------------------------
-# TRANSFORM PIPELINE
-# -------------------------------------
+# ------------------------------------------------
+# TRANSFORM
+# ------------------------------------------------
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
 ])
 
-# -------------------------------------
-# RULE-BASED HANDLING ENGINE
-# -------------------------------------
+# ------------------------------------------------
+# HANDLING ENGINE
+# ------------------------------------------------
 def generate_response(label, query):
     label = label.lower()
     query = query.lower()
 
-    if "bottle" in label or "glass" in label:
+    if "bottle" in label or "wine" in label or "glass" in label:
         return "Fragile object detected. Avoid stacking and use protective packaging."
 
     if "person" in label:
         return "Human detected in operational zone. Ensure safety compliance."
 
-    if "box" in label or "crate" in label:
-        return "Container detected. Verify weight classification before stacking."
-
     if query:
-        return f"No specific warehouse rule triggered for detected object: {label}"
+        return f"No warehouse rule triggered for detected object: {label}"
 
     return "No risk indicators detected."
 
 
-# =====================================
+# =================================================
 # IMAGE MODE
-# =====================================
+# =================================================
 if mode == "Image Inspection":
 
     uploaded_file = st.file_uploader(
@@ -93,7 +93,7 @@ if mode == "Image Inspection":
         col1, col2 = st.columns([2, 1])
 
         with col1:
-            st.image(image, width="stretch")
+            st.image(image, use_container_width=True)
 
         with col2:
             st.subheader("Prediction")
@@ -107,26 +107,20 @@ if mode == "Image Inspection":
                 st.info(response)
 
 
-# =====================================
-# VIDEO MODE (HF SAFE)
-# =====================================
-elif mode == "Video Monitoring":
+# =================================================
+# LIVE CAMERA MODE
+# =================================================
+elif mode == "Live Camera":
 
-    video_file = st.file_uploader(
-        "Upload warehouse video",
-        type=["mp4", "mov", "avi"]
-    )
+    st.write("Live camera works locally. HuggingFace Spaces do not support webcam access.")
 
+    run = st.checkbox("Start Live Camera (Local Only)")
+
+    frame_placeholder = st.empty()
     query_live = st.text_input("Operational Query (optional)")
 
-    if video_file:
-
-        # Save video temporarily
-        tfile = tempfile.NamedTemporaryFile(delete=False)
-        tfile.write(video_file.read())
-
-        cap = cv2.VideoCapture(tfile.name)
-        frame_placeholder = st.empty()
+    if run:
+        cap = cv2.VideoCapture(0)
 
         while cap.isOpened():
             ret, frame = cap.read()
@@ -155,7 +149,11 @@ elif mode == "Video Monitoring":
                 2
             )
 
-            frame_placeholder.image(frame, channels="BGR", width="stretch")
+            frame_placeholder.image(
+                frame,
+                channels="BGR",
+                use_container_width=True
+            )
 
             if query_live:
                 response = generate_response(predicted_label, query_live)
