@@ -5,6 +5,10 @@ import cv2
 import numpy as np
 import tempfile
 
+# ------------------------------------------------
+# PAGE CONFIG
+# ------------------------------------------------
+
 st.set_page_config(
     page_title="Warehouse Intelligence System",
     layout="wide"
@@ -13,11 +17,14 @@ st.set_page_config(
 st.title("Warehouse Intelligence System")
 st.write("Box Detection · OCR Analysis · Video Monitoring")
 
-# -----------------------------------------
+# ------------------------------------------------
 # RULE ENGINE
-# -----------------------------------------
+# ------------------------------------------------
 
-def generate_response(text):
+def generate_response(text: str):
+    if not text:
+        return "No specific warehouse risk keywords detected."
+
     text = text.lower()
 
     if "fragile" in text:
@@ -35,15 +42,35 @@ def generate_response(text):
     return "No specific warehouse risk keywords detected."
 
 
-# -----------------------------------------
-# MODULE SELECTION
-# -----------------------------------------
+# ------------------------------------------------
+# OCR FUNCTION
+# ------------------------------------------------
+
+def extract_text_from_image(image_array):
+    gray = cv2.cvtColor(image_array, cv2.COLOR_BGR2GRAY)
+    gray = cv2.GaussianBlur(gray, (3, 3), 0)
+    thresh = cv2.adaptiveThreshold(
+        gray,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY,
+        11,
+        2,
+    )
+    text = pytesseract.image_to_string(thresh)
+    return text.strip()
+
+
+# ------------------------------------------------
+# MODULE SELECTOR
+# ------------------------------------------------
 
 module = st.radio("Select Module", ["Image Inspection", "Video Monitoring"])
 
-# =========================================
-# IMAGE MODULE
-# =========================================
+
+# =================================================
+# IMAGE INSPECTION
+# =================================================
 
 if module == "Image Inspection":
 
@@ -52,65 +79,68 @@ if module == "Image Inspection":
         type=["jpg", "jpeg", "png"]
     )
 
-    if uploaded_image:
+    if uploaded_image is not None:
 
         image = Image.open(uploaded_image).convert("RGB")
         st.image(image, width="stretch")
 
-        img_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+        image_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
 
-        extracted_text = pytesseract.image_to_string(img_cv)
+        extracted_text = extract_text_from_image(image_cv)
 
         st.subheader("OCR Text")
-        st.code(extracted_text)
+        if extracted_text:
+            st.code(extracted_text)
+        else:
+            st.write("No text detected.")
 
         st.subheader("Operational Intelligence")
         result = generate_response(extracted_text)
         st.success(result)
 
 
-# =========================================
-# VIDEO MODULE
-# =========================================
+# =================================================
+# VIDEO MONITORING
+# =================================================
 
-if module == "Video Monitoring":
+elif module == "Video Monitoring":
 
     uploaded_video = st.file_uploader(
         "Upload warehouse video",
         type=["mp4", "mov", "avi"]
     )
 
-    if uploaded_video:
+    if uploaded_video is not None:
 
-        tfile = tempfile.NamedTemporaryFile(delete=False)
-        tfile.write(uploaded_video.read())
+        temp_file = tempfile.NamedTemporaryFile(delete=False)
+        temp_file.write(uploaded_video.read())
+        temp_file.close()
 
-        cap = cv2.VideoCapture(tfile.name)
+        cap = cv2.VideoCapture(temp_file.name)
+        frame_display = st.empty()
 
-        stframe = st.empty()
-
-        detected_text = ""
+        collected_text = ""
 
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 break
 
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            pil_frame = Image.fromarray(rgb)
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame_display.image(rgb_frame, width="stretch")
 
-            stframe.image(pil_frame, width="stretch")
-
-            text = pytesseract.image_to_string(frame)
-
-            if text.strip() != "":
-                detected_text += text
+            text = extract_text_from_image(frame)
+            if text:
+                collected_text += " " + text
 
         cap.release()
 
         st.subheader("Detected Text (Video)")
-        st.code(detected_text)
+        if collected_text.strip():
+            st.code(collected_text.strip())
+        else:
+            st.write("No text detected in video.")
 
         st.subheader("Operational Intelligence")
-        result = generate_response(detected_text)
+        result = generate_response(collected_text)
         st.success(result)
