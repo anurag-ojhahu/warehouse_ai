@@ -1,11 +1,11 @@
 venv/
 data/
-section1_cv/
-section2_ml/
-section3_nlp/
+# section1_cv/
+# section2_ml/
+# section3_nlp/
 *.mp4
 *.pt
-*.pth
+# *.pth
 *.tar.gz
 temp.mp4
 temp_video.mp4

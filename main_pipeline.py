@@ -30,22 +30,40 @@ transform = transforms.Compose([
 # Step 1: Object Detection
 # -------------------------
 
-image = cv2.imread("section1_cv/box.jpg")
-gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-edges = cv2.Canny(gray, 50, 150)
+# Import enhanced CV function
+from section1_cv.image_detection import detect_boxes
 
-contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+# -------------------------
+# Step 1: Object Detection
+# -------------------------
 
-if not contours:
+image_path = "section1_cv/box.jpg"
+image = cv2.imread(image_path)
+
+if image is None:
+    print("Image not found.")
+    exit()
+
+# Use the enhanced function
+output_image, boxes = detect_boxes(image)
+
+if not boxes:
     print("No object detected.")
     exit()
 
-cnt = max(contours, key=cv2.contourArea)
-x, y, w, h = cv2.boundingRect(cnt)
+# Take the first detected box for classification
+# Box format from detect_boxes is (x, y, w, h)
+x, y, w, h = boxes[0]
 
 cropped = image[y:y+h, x:x+w]
 
-print(f"Object detected at coordinates: ({x}, {y})")
+# Calculate center for reporting
+cx = x + w // 2
+cy = y + h // 2
+
+print(f"Object detected at coordinates: ({x}, {y}) Center: ({cx}, {cy}) Dimensions: {w}x{h}")
+print("Image with detections saved to 'detected_output.jpg'")
+cv2.imwrite("detected_output.jpg", output_image)
 
 
 # -------------------------

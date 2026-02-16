@@ -6,4 +6,8 @@ numpy
 pillow
 pytesseract
 easyocr
+scikit-learn
+sentence-transformers
+faiss-cpu
+pandas
 

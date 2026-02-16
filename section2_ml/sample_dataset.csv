@@ -1,0 +1,13 @@
+text,label
+fragile glass bottle,fragile
+handle with care fragile item,fragile
+glass material inside,fragile
+flammable liquid container,flammable
+highly flammable chemical,flammable
+high voltage equipment,high_risk
+heavy industrial machinery,high_risk
+explosive material inside,high_risk
+plastic container,safe
+cardboard box,safe
+metal parts packed,safe
+sealed package normal,safe
